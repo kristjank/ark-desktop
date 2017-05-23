@@ -32,7 +32,8 @@
     <md-toolbar style="background-color: rgba(0, 0, 0, 0);">
        <div class="md-toolbar-tools" style="-webkit-app-region: drag;">
          <img src="ark.png" alt="" height="30">
-         <md-button ng-click="ul.selected?ul.selected=null:ul.selected=ul.accounts[0]"><translate>Ark Client</translate> - {{ul.clientVersion}}</md-button>
+         <md-button ng-click="ul.selected?ul.selected=null:ul.selected=ul.accounts[0]">{{ul.network.token}} <translate>Client</translate> - {{ul.clientVersion}}</md-button>
+         <md-button ng-if="ul.clientVersion!=ul.latestClientVersion" onclick='require("electron").shell.openExternal("https://github.com/ArkEcosystem/ark-desktop/releases")' md-colors="{background:'green'}" aria-label="New version available!"><translate>New version available!</translate></md-button>
          <md-button ng-if="ul.selected" class="menu" hide-gt-md ng-click="ul.toggleList()" aria-label="Show Account List">
            <md-icon md-svg-icon="menu" ></md-icon>
          </md-button>
@@ -62,8 +63,6 @@
                   </md-list-item>
                   <md-list-item>
                     <md-button aria-label="Manage Networks" ng-click="ul.manageNetworks()"><translate>Manage Networks</translate></md-button>
-                  </md-list-item>
-                  <md-list-item>
                     <md-button aria-label="Background" ng-click="ul.manageBackgrounds()"><translate>Background</translate></md-button>
                   </md-list-item>
             </md-menu-content>
@@ -94,7 +93,7 @@
             </md-menu-content>
           </md-menu>
 
-          <md-menu md-offset="0 60">
+          <md-menu ng-if="ul.connectedPeer.market.marketCap" md-offset="0 60">
             <md-button aria-label="Show market" ng-click="ul.openMenu($mdOpenMenu, $event)">
               <md-icon md-font-library="material-icons">insert_chart</md-icon>
               <!--<md-icon md-colors="{'color' : ul.connectedPeer.market.change7h[ul.currency.name]<0?'red-200':'green-200' }" md-font-library="material-icons">arrow_{{ul.connectedPeer.market.change7h[ul.currency.name]<0?"down":"up"}}ward</md-icon>-->
@@ -140,7 +139,7 @@
                     <md-button aria-label="Maximize App" ng-click="ul.windowApp('maximize')"><translate>Maximize</translate></md-button>
                   </md-list-item>
                   <md-list-item>
-                    <md-button md-colors="{background: (ul.windowApp('isFullScreen') ? 'accent' : '')}" aria-label="Full Screen App" ng-click="ul.windowApp('setFullScreen', !ul.windowApp('isFullScreen'))"><translate>Full Screen</translate></md-button>
+                    <md-button md-colors="{background: (ul.windowApp('isFullScreen') ? 'accent' : '')}" aria-label="Full Screen App" ng-click="ul.windowApp('setFullScreen', !ul.windowApp('isFullScreen'))"><translate>Toggle Full Screen</translate></md-button>
                   </md-list-item>
 
                 </md-list>
@@ -158,7 +157,10 @@
                <div class="md-toolbar-tools">
                  <h2><translate>My Accounts</translate> {{ul.network.symbol}}{{ul.myAccountsBalance()}} / {{ul.currency.symbol}}{{(ul.myAccountsBalance()*ul.connectedPeer.market.price[ul.currency.name]).toFixed(2)}}</h2>
                </div>
-               <md-button class="share" md-no-ink ng-click="ul.selected=ul.accounts[0]" aria-label="Switch of dashboard">
+               <md-button class="share" md-no-ink ng-click="ul.refreshAccountBalances()" aria-label="Refresh balances">
+                 <md-icon md-font-library="material-icons">cached</md-icon>
+               </md-button>
+               <md-button class="share" md-no-ink ng-click="ul.selected=ul.accounts[0]" aria-label="Switch off dashboard">
                  <md-icon md-font-library="material-icons">close</md-icon>
                </md-button>
              </md-toolbar>
@@ -194,7 +196,7 @@
              </md-list>
            </md-content>
            <div id="home-box-row" layout="row" layout-align="space-between stretch">
-             <md-content id="home-box-price" style="opacity:0.8; border-radius:10px; width: 360px; margin:10px;" md-whiteframe="3">
+             <md-content ng-if="ul.connectedPeer.market.marketCap" id="home-box-price" style="opacity:0.8; border-radius:10px; width: 360px; margin:10px;" md-whiteframe="3">
                <md-list>
                  <md-list-item>
                    <b><translate>Price</translate> ({{ul.currency.symbol}})</b> <md-button class="md-secondary" aria-label="Change Currency" md-prevent-menu-close ng-click="ul.changeCurrency()">{{ul.connectedPeer.market.price[ul.currency.name]}}</md-button>
@@ -307,15 +309,6 @@
 
           <md-tabs md-dynamic-height>
             <md-tab label="{{'Transactions'|translate}}">
-                <md-card ng-if="ul.selected.cold" md-colors="{'background': 'blue-100'}" flex="100">
-                  <md-card-title>
-                    <md-card-title-text>
-                      <span>
-                        <translate>This account has never interacted with the network. This is a cold wallet.</translate>
-                      </span>
-                    </md-card-title-text>
-                  </md-card-title>
-                </md-card>
 
                 <md-table-container flex="100">
                   <table md-table id="tx-list">
@@ -742,6 +735,8 @@
     <script src="src/network/NetworkService.js"></script>
     <script src="src/changer/ChangerService.js"></script>
     <script src="src/directives.js"></script>
+    <script src="src/qrscanner/ScannerController.js"></script>
+    <script src="src/qrscanner/qrScanner.js"></script>
 
 
     <script type="text/javascript">

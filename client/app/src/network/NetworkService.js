@@ -12,7 +12,8 @@
 
     var network=switchNetwork(storageService.getContext());
 
-    var ark=require('arkjs');
+    var ark = require('arkjs');
+    ark.crypto.setNetworkVersion(network.version || 23);
 
     var clientVersion = require('../../package.json').version;
 
@@ -22,7 +23,7 @@
 
     connection.notify(peer);
 
-    function setNetwork(name,newnetwork){
+    function setNetwork(name, newnetwork){
       var n = storageService.getGlobal("networks");
       n[name]=newnetwork;
       storageService.setGlobal("networks",n);
@@ -32,6 +33,35 @@
       var n = storageService.getGlobal("networks");
       delete n[name];
       storageService.setGlobal("networks",n);
+    }
+
+    function createNetwork(data){
+      var n = storageService.getGlobal("networks");
+      var newnetwork = data
+      var deferred = $q.defer();
+      if(n[data.name]){
+        deferred.reject("Network name '"+data.name+"' already taken, please choose another one");
+      }
+      else {
+        $http({
+          url: data.peerseed + "/api/loader/autoconfigure",
+          method: 'GET',
+          timeout:5000
+        }).then(
+          function(resp){
+            newnetwork = resp.data.network;
+            newnetwork.forcepeer = data.forcepeer;
+            newnetwork.peerseed = data.peerseed;
+            n[data.name] = newnetwork;
+            storageService.setGlobal("networks",n);
+            deferred.resolve(n[data.name]);
+          },
+          function(resp){
+            deferred.reject("Cannot connect to peer to autoconfigure the network");
+          }
+        );
+      }
+      return deferred.promise;
     }
 
     function switchNetwork(newnetwork, reload){
@@ -55,7 +85,8 @@
             forcepeer: false,
             token: 'ARK',
             symbol: 'Ѧ',
-            explorer: 'http://explorer.ark.io',
+            version: 0x17,
+            explorer: 'https://explorer.ark.io',
             exchanges: {
               changer: "ark_ARK"
             },
@@ -66,7 +97,8 @@
             peerseed:'http://5.39.9.240:4001',
             token: 'TESTARK',
             symbol: 'TѦ',
-            explorer: 'http://explorer.ark.io',
+            version: 0x82,
+            explorer: 'http://texplorer.ark.io',
             background:"#222299"
           }
         };
@@ -260,6 +292,18 @@
     function getConnection(){
       return connection.promise;
     }
+    
+    function getLatestClientVersion() {
+        var deferred = $q.defer();
+        var url = 'https://api.github.com/repos/ArkEcosystem/ark-desktop/releases/latest';
+        $http.get(url, {timeout: 5000})
+            .then(function(res) {
+                deferred.resolve(res.data.tag_name);
+            }, function(e) {
+                // deferred.reject(gettextCatalog.getString("Cannot get latest version"));
+            });
+        return deferred.promise;
+    }
 
     listenNetworkHeight();
     getPrice();
@@ -269,6 +313,7 @@
     return {
       switchNetwork: switchNetwork,
       setNetwork: setNetwork,
+      createNetwork: createNetwork,
       removeNetwork: removeNetwork,
       getNetwork: getNetwork,
       getNetworks: getNetworks,
@@ -277,7 +322,8 @@
       getFromPeer: getFromPeer,
       postTransaction: postTransaction,
       broadcastTransaction: broadcastTransaction,
-      pickRandomPeer: pickRandomPeer
+      pickRandomPeer: pickRandomPeer,
+      getLatestClientVersion: getLatestClientVersion
     };
   }
 

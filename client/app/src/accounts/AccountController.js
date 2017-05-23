@@ -30,7 +30,13 @@
              return new Date(exchangetime*1000);
            };
          }
-       ]).directive('copyToClipboard',  function ($window, $mdToast) {
+       ]).filter('amountToCurrency', [function() {
+          return function(amount, scope) {
+            if (typeof amount === 'undefined' || amount == 0) return 0;
+            var price = scope.ul.connectedPeer.market.price[scope.ul.currency.name];
+            return (amount * price).toFixed(5);
+          }
+       }]).directive('copyToClipboard',  function ($window, $mdToast) {
         var body = angular.element($window.document.body);
         var textarea = angular.element('<textarea/>');
         textarea.css({
@@ -126,6 +132,8 @@
 
     self.openExplorer = openExplorer;
     self.clientVersion = require('../../package.json').version;
+    self.latestClientVersion = self.clientVersion;
+    networkService.getLatestClientVersion().then( function(r) { self.latestClientVersion = r; } );
     self.isNetworkConnected=false;
     self.selected     = null;
     self.accounts        = [ ];
@@ -225,6 +233,7 @@
         $mdToast.simple()
           .textContent(errorMessage)
           .hideDelay(hideDelay)
+          .theme('error')
       );
     }
 
@@ -571,16 +580,14 @@
                 transactions=transactions.sort(function(a,b){
                   return b.timestamp-a.timestamp;
                 });
-                var temp=self.selected.transactions.sort(function(a,b){
-                  return b.timestamp-a.timestamp;
-                });
 
                 var previousTx = self.selected.transactions
                 self.selected.transactions = transactions;
 
-                // if the previous tx was unconfirmed, but it back at the top (for better UX)
+                // if the previous tx was unconfirmed, rebroadcast and put it back at the top (for better UX)
                 if (previousTx.length && !previousTx[0].confirmations && previousTx[0].id != transactions[0].id) {
-                  self.selected.transactions.unshift(previousTx[0])
+                  networkService.broadcastTransaction(previousTx[0]);
+                  self.selected.transactions.unshift(previousTx[0]);
                 }
               }
             }
@@ -626,20 +633,32 @@
             transactions=transactions.sort(function(a,b){
               return b.timestamp-a.timestamp;
             });
-            var temp=self.selected.transactions.sort(function(a,b){
-              return b.timestamp-a.timestamp;
-            });
 
             var previousTx = self.selected.transactions
             self.selected.transactions = transactions;
 
-            // if the previous tx was unconfirmed, but it back at the top (for better UX)
+            // if the previous tx was unconfirmed, put it back at the top (for better UX)
             if (previousTx.length && !previousTx[0].confirmations && previousTx[0].id != transactions[0].id) {
-              self.selected.transactions.unshift(previousTx[0])
+              networkService.broadcastTransaction(previousTx[0]);
+              self.selected.transactions.unshift(previousTx[0]);
             }
           }
         }
       });
+    }
+
+     self.refreshAccountBalances = function(){
+      for(var i in self.accounts){
+        accountService
+        .refreshAccount(self.accounts[i])
+          .then(function(account){
+            for(var j in self.accounts){
+              if(self.accounts[j].address == account.address){
+                self.accounts[j].balance = account.balance;
+            }
+          }
+        });
+      }
     }
 
     /**
@@ -675,16 +694,14 @@
               transactions=transactions.sort(function(a,b){
                 return b.timestamp-a.timestamp;
               });
-              var temp=self.selected.transactions.sort(function(a,b){
-                return b.timestamp-a.timestamp;
-              });
 
               var previousTx = self.selected.transactions
               self.selected.transactions = transactions;
 
               // if the previous tx was unconfirmed, but it back at the top (for better UX)
               if (previousTx.length && !previousTx[0].confirmations && previousTx[0].id != transactions[0].id) {
-                self.selected.transactions.unshift(previousTx[0])
+                networkService.broadcastTransaction(previousTx[0]);
+                self.selected.transactions.unshift(previousTx[0]);
               }
             }
           }
@@ -708,7 +725,6 @@
 
     /**
      * Add an account
-     * @param menuId
      */
     function addWatchOnlyAddress() {
       var confirm = $mdDialog.prompt()
@@ -919,10 +935,15 @@
       //   toAddress: 'AYxKh6vwACWicSGJATGE3rBreFK7whc7YA',
       //   amount: 1,
       // };
+      var totalBalance = function(minusFee) {
+        var fee = 10000000;
+        var balance = selectedAccount.balance;
+        return accountService.numberToFixed((minusFee ? balance - fee : balance) / 100000000);
+      };
 
-      $scope.fillSendableBalance = function() {
-        var sendableBalance = selectedAccount.balance - 10000000;
-        $scope.send.data.amount = sendableBalance > 0 ? accountService.numberToFixed(sendableBalance / 100000000) : 0;
+      function fillSendableBalance() {
+        var sendableBalance = totalBalance(true);
+        $scope.send.data.amount = sendableBalance > 0 ? sendableBalance : 0;
       }
 
       function next() {
@@ -971,7 +992,10 @@
         data: data,
         cancel: cancel,
         next: next,
-        querySearch: querySearch
+        querySearch: querySearch,
+        fillSendableBalance: fillSendableBalance,
+        totalBalance: totalBalance(false),
+        remainingBalance: totalBalance(false), // <-- initial value, this will change by directive
       };
 
       $mdDialog.show({
@@ -982,7 +1006,6 @@
         scope: $scope
       });
     };
-
 
     function manageBackgrounds(){
       var fs = require('fs');
@@ -1016,6 +1039,7 @@
 
             if (stat.isFile()) {
               var url = path.join(imgPath, folder, file); // ex: assets/img/textures/file.png
+              url = url.replace(/\\/g,"/");
               var name = path.parse(file).name; // remove extension
               image[name] = `url('${url}')`;
             }
@@ -1065,8 +1089,6 @@
       function save() {
         $mdDialog.hide();
         for(var network in $scope.send.networks){
-          console.log(network);
-          console.log($scope.send.networks[network]);
           networkService.setNetwork(network, $scope.send.networks[network]);
         }
         window.location.reload();
@@ -1076,9 +1098,19 @@
         $mdDialog.hide();
       };
 
+      function createNetwork() {
+        networkService.createNetwork($scope.send.createnetwork).then(
+          function(network){
+
+          },
+          formatAndToastError
+        );
+      };
+
       $scope.send = {
         networkKeys: Object.keys(networks),
         networks: networks,
+        createNetwork: createNetwork,
         cancel: cancel,
         save: save
       };
@@ -1198,7 +1230,8 @@
             return ;
           }
 
-          if($scope.createAccountDialog.data.repassphrase == $scope.createAccountDialog.data.passphrase){
+          var words = $scope.createAccountDialog.data.repassphrase.split(' ');
+          if($scope.createAccountDialog.data.word3 === words[2] && $scope.createAccountDialog.data.word6 === words[5] && $scope.createAccountDialog.data.word9 === words[8]) {
             accountService.createAccount($scope.createAccountDialog.data.repassphrase).then(function(account){
               self.accounts.push(account);
               $mdToast.show(
