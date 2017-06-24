@@ -149,6 +149,8 @@
     self.createSecondPassphrase  = createSecondPassphrase;
     self.copiedToClipboard  = copiedToClipboard;
 
+    self.playFundsReceivedSong = storageService.get("playFundsReceivedSong") || false;
+    self.togglePlayFundsReceivedSong = togglePlayFundsReceivedSong;
     self.manageBackgrounds  = manageBackgrounds;
     self.manageNetworks  = manageNetworks;
     self.openPassphrasesDialog  = openPassphrasesDialog;
@@ -637,6 +639,13 @@
             var previousTx = self.selected.transactions
             self.selected.transactions = transactions;
 
+            var playSong = storageService.get('playFundsReceivedSong');
+            if (playSong == true && transactions.length > previousTx.length && transactions[0].type == 0 && transactions[0].recipientId == myaccount.address) {
+              var wavFile = require('path').resolve(__dirname, 'assets/audio/power-up.wav');
+              var audio = new Audio(wavFile);
+              audio.play();
+            }
+
             // if the previous tx was unconfirmed, put it back at the top (for better UX)
             if (previousTx.length && !previousTx[0].confirmations && previousTx[0].id != transactions[0].id) {
               networkService.broadcastTransaction(previousTx[0]);
@@ -659,6 +668,10 @@
           }
         });
       }
+    }
+
+    function togglePlayFundsReceivedSong(status) {
+      storageService.set('playFundsReceivedSong', self.playFundsReceivedSong, true);
     }
 
     /**
@@ -697,6 +710,13 @@
 
               var previousTx = self.selected.transactions
               self.selected.transactions = transactions;
+
+              var playSong = storageService.get('playFundsReceivedSong');
+              if (playSong == true && transactions.length > previousTx.length && transactions[0].type == 0 && transactions[0].recipientId == myaccount.address) {
+                var wavFile = require('path').resolve(__dirname, 'assets/audio/power-up.wav');
+                var audio = new Audio(wavFile);
+                audio.play();
+              }
 
               // if the previous tx was unconfirmed, but it back at the top (for better UX)
               if (previousTx.length && !previousTx[0].confirmations && previousTx[0].id != transactions[0].id) {
@@ -777,7 +797,9 @@
     };
 
     function addDelegate(selectedAccount){
-      var data={fromAddress: selectedAccount.address, delegates:[]};
+      var data={fromAddress: selectedAccount.address, delegates: [], registeredDelegates: {}};
+      accountService.getActiveDelegates().then(function(r){data.registeredDelegates = r;});
+      
       function add() {
         function indexOfDelegates(array,item){
           for(var i in array){
@@ -1410,7 +1432,7 @@
 
       var items = [
         { name: gettextCatalog.getString('Open in explorer'), icon: 'visibility'},
-        { name: gettextCatalog.getString('Delete'), icon: 'delete'},
+        { name: gettextCatalog.getString('Remove'), icon: 'clear'},
       ];
 
       if(!selectedAccount.delegate){
@@ -1429,14 +1451,15 @@
           openExplorer('/address/' + selectedAccount.address)
         }
 
-        else if(action==gettextCatalog.getString("Delete")){
+        else if(action==gettextCatalog.getString("Remove")){
           var confirm = $mdDialog.confirm()
-              .title(gettextCatalog.getString('Delete Account')+ ' ' +account.address)
-              .textContent(gettextCatalog.getString('Are you sure?'))
-              .ok(gettextCatalog.getString('Delete permanently this account'))
+              .title(gettextCatalog.getString('Remove Account')+ ' ' +account.address)
+              .textContent(gettextCatalog.getString('Remove this account from your wallet. ' +
+                  'The account may be added again using the original passphrase of the account.'))
+              .ok(gettextCatalog.getString('Remove account'))
               .cancel(gettextCatalog.getString('Cancel'));
           $mdDialog.show(confirm).then(function() {
-            accountService.deleteAccount(account).then(function(){
+            accountService.removeAccount(account).then(function(){
               self.accounts = accountService.loadAllAccounts();
 
               if(self.accounts.length>0) {
@@ -1448,7 +1471,7 @@
 
               $mdToast.show(
                 $mdToast.simple()
-                  .textContent(gettextCatalog.getString('Account deleted!'))
+                  .textContent(gettextCatalog.getString('Account removed!'))
                   .hideDelay(3000)
               );
             });

@@ -198,7 +198,7 @@
       }
     };
 
-    function deleteAccount(account){
+    function removeAccount(account){
       if(!account || !account.address){
         return $q.when(null);
       }
@@ -263,7 +263,7 @@
       });
       return deferred.promise;
     };
-
+    
     function getDelegate(publicKey){
       var deferred = $q.defer();
       if(!publicKey){
@@ -282,6 +282,19 @@
       });
       return deferred.promise;
     };
+    
+    function getActiveDelegates() {
+      var deferred = $q.defer();
+      networkService.getFromPeer("/api/delegates").then(function (resp) {
+        if(resp && resp.success && resp.delegates) {
+          deferred.resolve(resp.delegates);
+        }
+        else {
+          deferred.reject(gettextCatalog.getString("Cannot get registered delegates"));
+        }
+      });
+      return deferred.promise;
+    };
 
     function getDelegateByUsername(username){
       var deferred = $q.defer();
@@ -289,6 +302,7 @@
         deferred.reject("No Username");
         return deferred.promise;
       }
+      username = username.toLowerCase();
       networkService.getFromPeer("/api/delegates/get/?username="+username).then(function (resp) {
         if(resp && resp.success && resp.delegate){
           storageService.set("delegate-"+resp.delegate.address,resp.delegate);
@@ -697,7 +711,7 @@
 
       getPassphrases: getPassphrases,
 
-      deleteAccount: deleteAccount,
+      removeAccount: removeAccount,
 
       fetchAccount: fetchAccount,
 
@@ -712,6 +726,8 @@
       getVotedDelegates: getVotedDelegates,
 
       getDelegate: getDelegate,
+      
+      getActiveDelegates: getActiveDelegates,
 
       getDelegateByUsername: getDelegateByUsername,
 
